@@ -214,7 +214,7 @@ async fn rpc_call(
 
     for (index, mut response) in result_values.into_iter().enumerate() {
         let rpc_request = match RequestId::try_from(response["id"].clone()) {
-            Ok(id) if request_id_index_map.get(&id).is_some() => {
+            Ok(id) if request_id_index_map.contains_key(&id) => {
                 &uncached_requests[*request_id_index_map.get(&id).unwrap()]
             }
             _ => {
