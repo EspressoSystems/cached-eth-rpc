@@ -6,10 +6,6 @@ name: Docker
 # documentation.
 
 on:
-  push:
-    branches:
-      - "main"
-  pull_request:
   workflow_dispatch:
 
 concurrency:

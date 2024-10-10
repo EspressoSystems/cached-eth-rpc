@@ -3,9 +3,14 @@ name: Build
 on:
   push:
     branches:
-      - main
   pull_request:
   workflow_dispatch:
+
+env:
+  # Use docker.io for Docker Hub if empty
+  REGISTRY: ghcr.io
+  # github.repository as <account>/<repo>
+  IMAGE_NAME: ${{ github.repository }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -31,4 +36,97 @@ jobs:
         run: cargo test
 
       - name: Build
-        run: cargo build
+        run: cargo build --release
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: x86_64-unknown-linux-gnu
+          path: |
+            target/release/cached-eth-rpc
+
+  build-arm:
+    runs-on: buildjet-4vcpu-ubuntu-2204-arm
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Enable Rust Caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "arm"
+
+      - name: Test
+        run: cargo test
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: aarch64-unknown-linux-gnu
+          path: |
+            target/release/cached-eth-rpc
+
+  build-dockers:
+    runs-on: ubuntu-latest
+    needs: [build, build-arm]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Download executables AMD
+        uses: actions/download-artifact@v4
+        with:
+          name: x86_64-unknown-linux-gnu
+          path: target/amd64/release
+
+      - name: Download executables ARM
+        uses: actions/download-artifact@v4
+        with:
+          name: aarch64-unknown-linux-gnu
+          path: target/arm64/release
+
+      - name: Setup Docker BuildKit (buildx)
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Github Container Repo
+        uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate docker metadata
+        uses: docker/metadata-action@v5
+        id: cached_eth_rpc
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push docker
+        uses: docker/build-push-action@v6
+        with:
+          context: ./
+          file: ./Simple.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.cached_eth_rpc.outputs.tags }}
+          labels: ${{ steps.cached_eth_rpc.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+
+
+
+
+
+
+
+
+
+
+
